@@ -1,0 +1,132 @@
+Tables ###
+
+CurrencyExchange = 
+DATATABLE(
+    "Currency", STRING,
+    "Exchange Rate", DOUBLE,
+    "Symbol", STRING,
+    {
+        {"USD", 82.5, "$"},
+        {"EUR", 89.3, "€"},
+        {"Dinar", 265.7, "د.ك"}  -- Kuwaiti Dinar symbol
+    }
+)
+
+=========================================================================
+Tables ###
+
+Sales Selector = 
+DATATABLE(
+ "Sales Type", STRING,
+ "Sort_Order",INTEGER,
+ {
+    {"Net Sales",1},
+    {"Invoiced Sales",2}
+})
+=========================================================================
+Tables ###
+
+Time Frame Selector_2 = 
+DATATABLE(
+ "Time Frame", STRING,
+ "Sort_Order",INTEGER,
+ {
+    {"MTD",1},
+    {"YTD",2},
+    {"PY",3},
+    {"Rolling 12M",4}
+})
+=========================================================================
+Measures ###
+
+Selected Sales Value = 
+VAR SelectedType = SELECTEDVALUE('Sales Selector'[Sales Type], "Net Sales")
+VAR SelectedTimeFrame = SELECTEDVALUE('Time Frame Selector_2'[Time Frame], "YTD")
+VAR SelectedCurrency = SELECTEDVALUE(CurrencyExchange[Currency])
+VAR ExchangeRate = 
+    COALESCE(
+        LOOKUPVALUE(
+            CurrencyExchange[Exchange Rate],
+            CurrencyExchange[Currency], SelectedCurrency
+        ),
+        1  // Default to INR if nothing selected
+    )
+
+RETURN
+    SWITCH(
+        TRUE(),
+
+        // --- Net Sales ---
+        SelectedType = "Net Sales" && SelectedTimeFrame = "YTD",
+            CALCULATE(
+                SUM('Sales Fact'[Net Sales]) * ExchangeRate,
+                DATESYTD('Sales Fact'[Date])
+            ),
+
+        SelectedType = "Net Sales" && SelectedTimeFrame = "MTD",
+            CALCULATE(
+                SUM('Sales Fact'[Net Sales]) * ExchangeRate,
+                DATESMTD('Sales Fact'[Date])
+            ),
+
+        SelectedType = "Net Sales" && SelectedTimeFrame = "PY",
+            CALCULATE(
+                SUM('Sales Fact'[Net Sales]) * ExchangeRate,
+                SAMEPERIODLASTYEAR('Sales Fact'[Date])
+            ),
+
+        SelectedType = "Net Sales" && SelectedTimeFrame = "Rolling 12M",
+            VAR EndDate = MAX('Sales Fact'[Date])
+            VAR StartDate = DATE(YEAR(EDATE(EndDate, -11)), MONTH(EDATE(EndDate, -11)), 1)
+            RETURN
+                CALCULATE(
+                    SUM('Sales Fact'[Net Sales]) * ExchangeRate,
+                    DATESBETWEEN('Sales Fact'[Date], StartDate, EndDate)
+                ),
+
+        // --- Invoiced Sales ---
+        SelectedType = "Invoiced Sales" && SelectedTimeFrame = "YTD",
+            CALCULATE(
+                SUM('Sales Fact'[Invoiced Sales]) * ExchangeRate,
+                DATESYTD('Sales Fact'[Date])
+            ),
+
+        SelectedType = "Invoiced Sales" && SelectedTimeFrame = "MTD",
+            CALCULATE(
+                SUM('Sales Fact'[Invoiced Sales]) * ExchangeRate,
+                DATESMTD('Sales Fact'[Date])
+            ),
+
+        SelectedType = "Invoiced Sales" && SelectedTimeFrame = "PY",
+            CALCULATE(
+                SUM('Sales Fact'[Invoiced Sales]) * ExchangeRate,
+                SAMEPERIODLASTYEAR('Sales Fact'[Date])
+            ),
+
+        SelectedType = "Invoiced Sales" && SelectedTimeFrame = "Rolling 12M",
+            VAR EndDate = MAX('Sales Fact'[Date])
+            VAR StartDate = DATE(YEAR(EDATE(EndDate, -11)), MONTH(EDATE(EndDate, -11)), 1)
+            RETURN
+                CALCULATE(
+                    SUM('Sales Fact'[Invoiced Sales]) * ExchangeRate,
+                    DATESBETWEEN('Sales Fact'[Date], StartDate, EndDate)
+                ),
+
+        // Default case
+        BLANK()
+    )
+=====================================================================================================
+Measures ###
+
+Selected Sales Value with Symbol = 
+VAR SelectedCurrency = SELECTEDVALUE(CurrencyExchange[Currency])
+VAR Symbol = 
+    LOOKUPVALUE(
+        CurrencyExchange[Symbol],
+        CurrencyExchange[Currency], SelectedCurrency
+    )
+VAR Value2 = [Selected Sales Value]
+
+RETURN
+    Symbol & " " & FORMAT(Value2, "#,##0.0")
+=====================================================================================================
